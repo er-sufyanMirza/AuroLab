@@ -1,0 +1,10 @@
+{"query_id": "q001", "question": "What centrifuge speed and duration is used for cell pellet preparation?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q002", "question": "What is the working range of the BCA protein assay?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q003", "question": "How do you prepare a standard curve for BSA protein quantification?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q004", "question": "What temperature should samples be incubated at for ELISA antibody binding?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q005", "question": "What is the recommended pipetting technique to avoid air bubbles?", "relevant_chunk_ids": [], "doc_type_hint": "SOP"}
+{"query_id": "q006", "question": "How long should PCR denaturation step run at 95 degrees?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q007", "question": "What volume of sample is typically loaded per well in a 96-well plate assay?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q008", "question": "How should reagents be stored to maintain enzyme activity?", "relevant_chunk_ids": [], "doc_type_hint": "SOP"}
+{"query_id": "q009", "question": "What is the wash buffer composition for western blot?", "relevant_chunk_ids": [], "doc_type_hint": "protocol"}
+{"query_id": "q010", "question": "What are the safety precautions when handling ethidium bromide?", "relevant_chunk_ids": [], "doc_type_hint": "SOP"}

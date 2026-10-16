@@ -1,0 +1,103 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# AuroLab — Docker Compose
+# Services: backend (FastAPI) + dashboard (Streamlit) + chromadb (optional)
+#
+# Usage:
+#   docker-compose up --build          # start everything
+#   docker-compose up backend          # backend only
+#   docker-compose logs -f backend     # tail backend logs
+#   docker-compose down -v             # stop + remove volumes
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: runtime
+    image: aurolab-backend:latest
+    container_name: aurolab-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Required — get from https://console.groq.com
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      # Optional overrides (defaults shown)
+      - AUROLAB_SIM_MODE=${AUROLAB_SIM_MODE:-pybullet}
+      - AUROLAB_VISION_BACKEND=${AUROLAB_VISION_BACKEND:-mock}
+      - CHROMA_PERSIST=/app/data/chroma
+      - REGISTRY_PATH=/app/data/registry.json
+      - TELEMETRY_DB=/app/data/telemetry.db
+      - PORT=8080
+      - ENV=prod
+    volumes:
+      # Persist all data across container restarts
+      - aurolab-chroma:/app/data/chroma
+      - aurolab-data:/app/data
+      - aurolab-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: ["python", "main.py"]
+
+  # ── Streamlit Dashboard ──────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: runtime
+    image: aurolab-dashboard:latest
+    container_name: aurolab-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+      - --theme.base=dark
+      - --theme.backgroundColor=#020408
+      - --theme.primaryColor=#00f0c8
+      - --theme.textColor=#d0e4f0
+      - --theme.font=monospace
+
+  # ── ChromaDB (optional standalone — not needed, AuroLab uses embedded) ───────
+  # Uncomment if you want a separate ChromaDB HTTP server instead of embedded:
+  #
+  # chromadb:
+  #   image: chromadb/chroma:latest
+  #   container_name: aurolab-chromadb
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - aurolab-chroma:/chroma/chroma
+  #   environment:
+  #     - IS_PERSISTENT=TRUE
+
+# ── Named volumes (persist data across restarts) ──────────────────────────────
+volumes:
+  aurolab-chroma:
+    driver: local
+  aurolab-data:
+    driver: local
+  aurolab-logs:
+    driver: local

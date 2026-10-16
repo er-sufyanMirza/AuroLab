@@ -1,0 +1,67 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments — NEVER copy into image
+Auroenv/
+venv/
+.venv/
+env/
+ENV/
+
+# Data directories — mounted as volumes at runtime
+data/chroma/
+data/*.db
+data/pdfs/
+logs/
+*.log
+
+# Environment files — secrets never go in image
+.env
+.env.local
+.env.production
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Tests (optional — remove this to include tests in image)
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+pytest.ini
+
+# Node (only used for docx generation scripts)
+node_modules/
+
+# Build artifacts
+*.zip
+*.tar.gz
+dist/
+build/
+
+# Docs
+*.md
+*.docx
+docs/
+
+# Scripts only needed locally
+scripts/validate_startup.py
+fix_imports.py
+fix_project_structure.py
+mock_test.py
+
+# Isaac extension (requires NVIDIA)
+isaac_extension/

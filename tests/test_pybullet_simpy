@@ -1,0 +1,205 @@
+"""
+tests/test_pybullet_sim.py
+
+Tests for the PyBullet simulation backend.
+These run in both modes:
+  - pybullet installed  → real physics
+  - pybullet missing    → graceful fallback to mock physics
+
+Run with: pytest tests/test_pybullet_sim.py -v
+"""
+
+from __future__ import annotations
+
+import pytest
+from services.execution_service.core.robot_commands import (
+    AspirateCommand, DispenseCommand, PickUpTipCommand, DropTipCommand,
+    HomeCommand, CentrifugeCommand, IncubateCommand,
+    LabwarePosition, CommandType,
+)
+from services.execution_service.core.pybullet_sim import (
+    run_pybullet_simulation, PYBULLET_AVAILABLE,
+    SLOT_POSITIONS_M, LABWARE_HEIGHTS_M,
+)
+from services.execution_service.core.isaac_sim_bridge import (
+    IsaacSimBridge, SimMode, DEFAULT_LABWARE_MAP,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+STANDARD_LABWARE = {
+    1: "96_well_plate",
+    2: "96_well_plate",
+    11: "tip_rack_300ul",
+    12: "waste_container",
+}
+
+def _pick(idx=0): return PickUpTipCommand(command_index=idx, protocol_step_ref=1, tip_rack_slot=11)
+def _asp(idx=1, slot=1): return AspirateCommand(command_index=idx, protocol_step_ref=1, volume_ul=50, source=LabwarePosition(deck_slot=slot))
+def _disp(idx=2, slot=2): return DispenseCommand(command_index=idx, protocol_step_ref=1, volume_ul=50, destination=LabwarePosition(deck_slot=slot))
+def _drop(idx=3): return DropTipCommand(command_index=idx, protocol_step_ref=1)
+def _home(idx=0): return HomeCommand(command_index=idx, protocol_step_ref=0)
+
+
+# ---------------------------------------------------------------------------
+# Geometry tests
+# ---------------------------------------------------------------------------
+
+class TestGeometry:
+
+    def test_all_12_slots_have_positions(self):
+        assert len(SLOT_POSITIONS_M) == 12
+        for slot in range(1, 13):
+            assert slot in SLOT_POSITIONS_M
+
+    def test_slot_positions_in_range(self):
+        for slot, (x, y) in SLOT_POSITIONS_M.items():
+            assert 0 <= x <= 0.38, f"Slot {slot} x={x} out of deck range"
+            assert 0 <= y <= 0.28, f"Slot {slot} y={y} out of deck range"
+
+    def test_labware_heights_positive(self):
+        for name, h in LABWARE_HEIGHTS_M.items():
+            assert h > 0, f"{name} height must be positive"
+
+    def test_tip_rack_taller_than_plate(self):
+        assert LABWARE_HEIGHTS_M["tip_rack_300ul"] > LABWARE_HEIGHTS_M["96_well_plate"]
+
+
+# ---------------------------------------------------------------------------
+# SimMode tests
+# ---------------------------------------------------------------------------
+
+class TestSimMode:
+
+    def test_pybullet_mode_exists(self):
+        assert SimMode.PYBULLET == "pybullet"
+
+    def test_all_three_modes(self):
+        modes = {SimMode.MOCK, SimMode.PYBULLET, SimMode.LIVE}
+        assert len(modes) == 3
+
+    def test_bridge_pybullet_mode(self):
+        bridge = IsaacSimBridge(mode=SimMode.PYBULLET)
+        assert bridge.mode == SimMode.PYBULLET
+
+    def test_bridge_is_live_false_for_pybullet(self):
+        bridge = IsaacSimBridge(mode=SimMode.PYBULLET)
+        assert bridge.is_live is False
+
+
+# ---------------------------------------------------------------------------
+# PyBullet simulation tests
+# ---------------------------------------------------------------------------
+
+class TestPybulletSim:
+
+    def test_clean_sequence_passes(self):
+        cmds = [_home(0), _pick(1), _asp(2), _disp(3), _drop(4), _home(5)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        assert result.passed is True
+        assert result.collision_detected is False
+
+    def test_aspirate_without_tip_fails(self):
+        cmds = [_home(0), _asp(1)]  # no pick_up_tip
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        assert result.passed is False
+        assert result.collision_at_command == 1
+
+    def test_dispense_without_tip_fails(self):
+        cmds = [_home(0), _disp(1)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        assert result.passed is False
+
+    def test_double_pickup_fails(self):
+        cmds = [_pick(0), _pick(1)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        assert result.passed is False
+        assert result.collision_at_command == 1
+
+    def test_volume_tracked(self):
+        cmds = [_pick(0), _asp(1, vol=75), _disp(2, slot=2), _drop(3)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        if result.passed:
+            assert result.telemetry["total_volume_aspirated_ul"] == 75.0
+
+    def test_tip_changes_counted(self):
+        cmds = [_pick(0), _asp(1), _disp(2), _drop(3)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        if result.passed:
+            assert result.telemetry["tip_changes"] == 1
+
+    def test_centrifuge_command_handled(self):
+        cmds = [CentrifugeCommand(command_index=0, protocol_step_ref=1,
+                                   speed_rpm=3000, duration_s=300)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        # Centrifuge is an instrument op — should always pass
+        assert result.passed is True
+
+    def test_returns_simulation_result_type(self):
+        from services.execution_service.core.robot_commands import SimulationResult
+        result = run_pybullet_simulation([_home()], labware_map=STANDARD_LABWARE)
+        assert isinstance(result, SimulationResult)
+
+    def test_physics_engine_in_telemetry(self):
+        result = run_pybullet_simulation([_home()], labware_map=STANDARD_LABWARE)
+        engine = result.telemetry.get("physics_engine", "")
+        assert engine in ("pybullet", "mock_fallback")
+
+    def test_empty_commands_passes(self):
+        result = run_pybullet_simulation([], labware_map=STANDARD_LABWARE)
+        assert result.passed is True
+
+    def test_distance_tracked(self):
+        cmds = [_home(0), _pick(1), _home(2)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        if result.passed:
+            assert result.telemetry.get("total_distance_m", 0) > 0
+
+    def test_sim_duration_positive(self):
+        cmds = [_home(0), _pick(1), _asp(2), _drop(3)]
+        result = run_pybullet_simulation(cmds, labware_map=STANDARD_LABWARE)
+        assert result.sim_duration_s >= 0
+
+
+# ---------------------------------------------------------------------------
+# Bridge integration with PyBullet mode
+# ---------------------------------------------------------------------------
+
+class TestBridgeWithPybullet:
+
+    def test_bridge_runs_pybullet(self):
+        bridge = IsaacSimBridge(mode=SimMode.PYBULLET, labware_map=STANDARD_LABWARE)
+        cmds = [_home(0), _pick(1), _asp(2), _disp(3), _drop(4)]
+        result = bridge.validate_execution_plan(cmds)
+        assert result is not None
+
+    def test_bridge_uses_vision_labware_map(self):
+        custom_map = {1: "96_well_plate", 11: "tip_rack_300ul", 12: "waste_container"}
+        bridge = IsaacSimBridge(mode=SimMode.PYBULLET, labware_map=custom_map)
+        result = bridge.validate_execution_plan([_home()])
+        assert result.passed is True
+
+    def test_bridge_falls_back_gracefully(self):
+        # MOCK mode should still work perfectly
+        bridge = IsaacSimBridge(mode=SimMode.MOCK)
+        result = bridge.validate_execution_plan([_pick(0), _asp(1), _disp(2), _drop(3)])
+        assert result is not None
+
+    def test_pybullet_installed_flag(self):
+        # Whether True or False, the flag must be a bool
+        assert isinstance(PYBULLET_AVAILABLE, bool)
+
+
+# ---------------------------------------------------------------------------
+# Aspirate with custom volume (helper needs updating)
+# ---------------------------------------------------------------------------
+
+def _asp(idx=1, slot=1, vol=50.0):
+    return AspirateCommand(
+        command_index=idx, protocol_step_ref=1,
+        volume_ul=vol,
+        source=LabwarePosition(deck_slot=slot),
+    )

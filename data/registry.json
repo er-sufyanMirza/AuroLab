@@ -1,0 +1,19 @@
+{
+  "1f6230498284d2c92922100aa37e9cb20b7292951f07b5c197592a020f93da18": {
+    "filename": "MAN0011430_Pierce_BCA_Protein_Asy_UG.pdf",
+    "status": "ready",
+    "chunk_count": 24,
+    "page_count": 6,
+    "parse_strategy": "pymupdf",
+    "doc_type": "protocol",
+    "ingested_at": 1774799833.2829084
+  },
+  "c6d2963417403c86eeb9043315657fd8fa187caa7da4e6a81d597ca8418a71fe": {
+    "filename": "AuroLab_Abstract pdf.pdf",
+    "status": "ready",
+    "chunk_count": 12,
+    "page_count": 2,
+    "doc_type": "protocol",
+    "ingested_at": 1775540137.6835973
+  }
+}
